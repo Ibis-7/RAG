@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>ContextAI - Setup</title>
+</head>
+
+<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">Knowledge Base</h1>
+        <p class="text-slate-500 mb-6">Upload documents or links to start.</p>
+        
+        <form id="ingestForm" class="space-y-4">
+
+            <!-- Source selector -->
+            <div class="grid grid-cols-2 gap-3">
+                <button type="button" onclick="showSource('text')"
+                    class="bg-slate-100 hover:bg-blue-100 text-slate-700 font-medium py-2 rounded-lg transition">
+                    📝 Text
+                </button>
+
+                <button type="button" onclick="showSource('file')"
+                    class="bg-slate-100 hover:bg-blue-100 text-slate-700 font-medium py-2 rounded-lg transition">
+                    📄 Document
+                </button>
+
+                <button type="button" onclick="showSource('url')"
+                    class="bg-slate-100 hover:bg-blue-100 text-slate-700 font-medium py-2 rounded-lg transition">
+                    🌐 Website
+                </button>
+
+                <button type="button" onclick="showSource('yt')"
+                    class="bg-slate-100 hover:bg-blue-100 text-slate-700 font-medium py-2 rounded-lg transition">
+                    ▶ YouTube
+                </button>
+            </div>
+
+            <!-- Dynamic inputs -->
+            <div id="sources" class="space-y-4"></div>
+
+            <!-- Reset -->
+            <button type="button" onclick="resetSources()"
+                class="text-sm text-blue-600 hover:underline">
+                + Add another source
+            </button>
+
+            <!-- Submit -->
+            <button type="submit" id="submitBtn"
+                class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition">
+                Process Knowledge
+            </button>
+        </form>
+
+        <div id="loader" class="hidden mt-4 text-center text-blue-600 animate-pulse">
+            Processing... This may take a minute.
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('ingestForm');
+        const sourcesDiv = document.getElementById('sources');
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const loader = document.getElementById('loader');
+
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+            loader.classList.remove('hidden');
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/ingest', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                } else {
+                    alert(data.message || "Something went wrong");
+                    btn.disabled = false;
+                    btn.innerText = "Process Knowledge";
+                }
+            } catch {
+                alert("Connection lost");
+                btn.disabled = false;
+                btn.innerText = "Process Knowledge";
+            }
+        };
+
+        function resetSources() {
+            sourcesDiv.innerHTML = '';
+        }
+
+        function showSource(type) {
+            let html = '';
+
+            if (type === 'text') {
+                html = `
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Paste Text</label>
+                    <textarea name="raw_text" rows="4"
+                        class="w-full mt-1 border rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                </div>`;
+            }
+
+            if (type === 'file') {
+                html = `
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Upload Files</label>
+                    <input type="file" name="files" multiple accept=".pdf,.txt"
+                        class="w-full mt-1 text-sm">
+                </div>`;
+            }
+
+            if (type === 'url') {
+                html = `
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Website URL</label>
+                    <input type="url" name="url"
+                        class="w-full mt-1 border rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>`;
+            }
+
+            if (type === 'yt') {
+                html = `
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">YouTube URL</label>
+                    <input type="url" name="yt_url"
+                        class="w-full mt-1 border rounded-md p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>`;
+            }
+
+            sourcesDiv.insertAdjacentHTML('beforeend', html);
+        }
+    </script>
+</body>
+</html>
