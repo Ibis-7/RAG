@@ -6,13 +6,14 @@ from flask import make_response
 from flask import Flask, render_template, request, jsonify, url_for
 import os
 import tempfile
-from ingest import ingest
-from rag import RAGService
 from werkzeug.utils import secure_filename
+from langchain_core.documents import Document
 
+# --- REMOVED HEAVY IMPORTS FROM HERE ---
+# from ingest import ingest  <-- These were killing your deployment
+# from rag import RAGService <--
 
 TMP_DIR = tempfile.gettempdir()
-
 
 def get_session_id():
     sid = request.cookies.get("sid")
@@ -25,23 +26,23 @@ def get_vectordb_path(sid):
 
 def cleanup_tmp_dbs(ttl_minutes=30):
     while True:
-        now = time.time()
-        for d in os.listdir(TMP_DIR):
-            if d.startswith("vectordb_") or d.startswith("uploads_"):
-                path = os.path.join("/tmp", d)
-                if os.path.isdir(path):
-                    if now - os.path.getmtime(path) > ttl_minutes * 60:
-                        shutil.rmtree(path, ignore_errors=True)
+        try:
+            now = time.time()
+            for d in os.listdir(TMP_DIR):
+                if d.startswith("vectordb_") or d.startswith("uploads_"):
+                    path = os.path.join(TMP_DIR, d)
+                    if os.path.isdir(path):
+                        if now - os.path.getmtime(path) > ttl_minutes * 60:
+                            shutil.rmtree(path, ignore_errors=True)
+        except Exception as e:
+            print(f"Cleanup error: {e}")
         time.sleep(300)
-
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "uploads"
 
-
 # Ensure upload folder exists
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-
 
 @app.route("/")
 def index():
@@ -50,15 +51,16 @@ def index():
     resp.set_cookie("sid", sid, max_age=60 * 30)  # 30 min session
     return resp
 
-
 @app.route("/chat_page")
 def chat_page():
     return render_template("chat.html")
 
-from langchain_core.documents import Document # Add this import at the top
-
 @app.route("/ingest", methods=["POST"])
 def ingest_data():
+    # --- LAZY IMPORT HERE ---
+    # This prevents the server from hanging on startup
+    from ingest import ingest 
+    
     sid = get_session_id()
     vectordb_path = get_vectordb_path(sid)
 
@@ -95,7 +97,7 @@ def ingest_data():
         text_files=saved_texts or None,
         urls=[url] if url else None,
         youtube_links=[yt_url] if yt_url else None,
-        reset=True   # ✅ SAFE now
+        reset=True
     )
 
     return jsonify({"status": "success", "redirect": url_for("chat_page")})
@@ -103,12 +105,17 @@ def ingest_data():
 
 @app.route("/ask", methods=["POST"])
 def ask():
+    # --- LAZY IMPORT HERE ---
+    from rag import RAGService
+    
     sid = get_session_id()
     vectordb_path = get_vectordb_path(sid)
 
     if not os.path.exists(vectordb_path):
         return jsonify({"error": "Session expired. Please upload documents again."}), 400
 
+    # Note: RAGService initialization is heavy. 
+    # The first question might take a few seconds, but the server will remain alive.
     rag = RAGService(persist_directory=vectordb_path)
     query = request.json.get("query")
 
@@ -120,11 +127,10 @@ def ask():
         "sources": result["sources"]
     })
 
-
-# cleanup thread
+# Cleanup thread
 threading.Thread(target=cleanup_tmp_dbs, daemon=True).start()
 
-
 if __name__ == "__main__":
+    # This block is for local testing only
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
